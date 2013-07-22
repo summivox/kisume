@@ -1,21 +1,42 @@
 # Kisume
 
 Kisume is a javascript library (written in coffee-script) designed to free your
-Userscript from the limitation of sandboxes in a safe yet convenient way, with
-zero dependency on other libraries, and almost no impact on coding style. It
-also tries not to inadvertently pollute the global namespace by managing data
-and code under `window.kisume`.
+Userscript from the limitation of sandboxes in a safe yet convenient way.
+
+**NOTICE: Using mangler (e.g. `uglifyjs -m`) on coffee-script output (and
+probably other compile-to-javascript languages) could cause Kisume to stop
+working, due to language runtime library being mangled.**
+
+
+## Features
+
+* Zero runtime dependency
+* Almost no impact on coding style
+* Minimal pollution of global namespace (only `window.KISUME`)
+
+
+## Build
+
+```sh
+npm install --global grunt-cli
+npm install
+grunt
+```
+
+Use `dist/kisume.js` or `dist/kisume.min.js`.
+
+### Options
+
+```
+--iced  :   Also include iced-coffee-script runtime
+--trace :   Enable postMessage tracing
+```
 
 
 ## Usage
 
-A single file `kisume.coffee` defines a single class `Kisume`, which is also
-exported as `window.Kisume`.
 
-
-## Example
-
-See `test.coffee`.
+The library defines a single class `Kisume`, exported as `window.Kisume`.
 
 
 ## Compatibility
