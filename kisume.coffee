@@ -3,7 +3,7 @@ https://github.com/smilekzs/kisume
 Cross-sandbox-window utility library for userscript environments (Chrome, GreaseMonkey, ...)
 !###
 
-Kisume = do ->
+window.Kisume = Kisume = do ->
   # inject script to bottom
   $ = (doc, script) ->
     el = doc.createElement 'script'
@@ -34,12 +34,12 @@ Kisume = do ->
     window.kisume = kisume =
       DEBUG: true
 
-      # env: "ensure exist"
       env: (name) -> @env[name] ||= {}
 
       _iife: {}
       _tran: {}
 
+      _bind: (f) -> => f.apply @env, arguments
       _err: (e) -> switch
         when e instanceof Error
           # manually serialize
@@ -130,7 +130,7 @@ Kisume = do ->
       for own name, x of o
         switch
           when x instanceof Function
-            f += "o[#{JSON.stringify name}] = #{x};\n"
+            f += "o[#{JSON.stringify name}] = window.kisume._bind(#{x});\n"
           when x instanceof Node
             #TODO
           else
