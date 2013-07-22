@@ -130,12 +130,12 @@ window.Kisume = Kisume = do ->
       for own name, x of o
         switch
           when x instanceof Function
-            f += "o[#{JSON.stringify name}] = window.kisume._bind(#{x});\n"
+            f += "o[#{JSON.stringify name}] = k._bind(#{x});\n"
           when x instanceof Node
             #TODO
           else
             v.push {name, value: x}
-      $ @D, "(function(o){#{f}})(window.kisume.env(#{JSON.stringify ns}));"
+      $ @D, "(function(k,o){#{f}})(window.kisume,window.kisume.env(#{JSON.stringify ns}));"
       @_Q_dn cb, {type: 'set', ns, v}
 
     get: (ns, names, cb) ->
