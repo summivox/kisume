@@ -10,15 +10,34 @@ Kisume = do ->
     el.textContent = script
     doc.head.appendChild el
 
-  lib = ->
+  # coffee-script shims (~1.6.0)
+  # recompile this script with newer version to get full set of shims
+  COFFEE_SHIM = """
+    var
+      __hasProp = {}.hasOwnProperty,
+      __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
+      __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; },
+      __slice = [].slice,
+      __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
+  """
+  _dummy = (args...) ->
+    x in args
+    v for own k, v of obj
+    class X extends Y
+      bound: => null
+
+  LIB = ->
     ###!
     kisume: bottom library
     !###
     if window.kisume? then return
     window.kisume = kisume =
-      # env: "ensure exist"
-      env: (name) -> kisume.env[name] ||= {}
+      DEBUG: true
 
+      # env: "ensure exist"
+      env: (name) -> @env[name] ||= {}
+
+      _iife: {}
       _tran: {}
 
       _err: (e) -> switch
@@ -33,10 +52,13 @@ Kisume = do ->
       _Q_up: do ->
         n = 0
         (cb, o) ->
-          o._kisume_Q_up = ++n
-          window.postMessage o, window.location.origin
-          @_tran[n] = cb
-          return
+          ++n
+          if cb
+            @_tran[n] = cb
+          if o?
+            o._kisume_Q_up = n
+            window.postMessage o, window.location.origin
+          return n
       _A_up: (n, o) ->
         o._kisume_A_up = n
         window.postMessage o, window.location.origin
@@ -46,21 +68,31 @@ Kisume = do ->
         try
           switch o.type
             when 'set'
-              x = kisume.env(o.ns)
+              x = @env(o.ns)
               for {name, value} in o.v
                 x[name] = value
-              @_A_up n, {type: 'set', err: null}
+              @_A_up n, {type: 'set'}
             when 'get'
-              x = kisume.env(o.ns)
+              x = @env(o.ns)
               ret = {}
               for name in o.names
                 ret[name] = x[name]
-              @_A_up n, {type: 'get', err: null, ret}
+              @_A_up n, {type: 'get', ret}
             when 'run'
-              ret = kisume.env(o.ns)[o.name]?.apply kisume.env, o.args
-              @_A_up n, {type: 'run', err: null, ret}
+              if o.iife?
+                f = @_iife[o.iife]
+              else
+                f = @env(o.ns)[o.name]
+              if !f
+                @_A_up n, {type: 'run', err: true}
+              else if o.async
+                f?.call @env, o.args..., (err, rets...) =>
+                  @_A_up n, {type: 'run', async: true, err, rets}
+              else
+                ret = f?.apply @env, o.args
+                @_A_up n, {type: 'run', async: false, ret}
         catch e
-          @_A_up n, {type: o.type, err: @_err(e)}
+          @_A_up n, {type: o.type, async: false, err: @_err(e)}
 
       _A_dn: (n, o) ->
         switch o.type
@@ -70,12 +102,13 @@ Kisume = do ->
     window.addEventListener 'message', (e) ->
       if e.origin != window.location.origin ||
          !(o = e.data)? then return
+      if kisume.DEBUG then console.log o
       switch
         when (n = o._kisume_Q_dn)? then kisume._Q_dn n, o
         when (n = o._kisume_A_dn)? then kisume._A_dn n, o
 
     # notify top: bottom init finished
-    kisume._Q_up (->), {type: 'init'}
+    kisume._Q_up null, {type: 'init'}
 
   class Kisume
     debug: true
@@ -86,7 +119,9 @@ Kisume = do ->
       @_tran = {}
       @_init_cb = cb
       @W.addEventListener 'message', @_listener
-      $ @D, "(#{lib})();"
+      if !(@D.body.dataset['kisume'])?
+        $ @D, "#{COFFEE_SHIM};(#{LIB})();"
+        @D.body.dataset['kisume'] = true
 
     set: (ns, o, cb) ->
       # TODO: sanitize
@@ -107,38 +142,36 @@ Kisume = do ->
       # TODO: sanitize
       @_Q_dn cb, {type: 'get', ns, names}
 
-    run: do ->
-      _func = (f, cb) ->
-        n = @_Q_dn cb
-        $ @D, """
-          try {
-            var ret = (#{f}).call(window.kisume.env);
-            window.kisume._A_up(#{n}, {type: 'run', err: null, ret: ret});
-          } catch(e) {
-            window.kisume._A_up(#{n}, {type: 'run', err: window.kisume._err(e)});
-          }
-        """
+    # macro: run sync / async
+    # NOTE: `_run` returns "->" function for proper binding
+    _run = (async) ->
+      _func = (f, args..., cb) ->
+        n = @_Q_dn()
+        $ @D, "window.kisume._iife[#{n}] = (#{f});"
+        @_Q_dn cb, {type: 'run', async, iife: n, args}
       _script = (s, cb) ->
         _func.call this, "function(){;#{s};}", cb
       _env = (ns, name, args..., cb) ->
-        @_Q_dn cb, {type: 'run', ns, name, args}
+        @_Q_dn cb, {type: 'run', async, ns, name, args}
 
-      # overload resolve
       (x, xs...) ->
-        (switch xs.length
-          when 0 then ->
-          when 1
-            {
-              'function': _func
-              'string': _script
-            }[typeof x]
-          else _env
+        (switch typeof x
+          when 'function' then _func
+          when 'string'
+            if xs.length == 1 then _script
+            else _env
+          else ->
         ).apply this, arguments
+
+    run: _run false
+    runAsync: _run true
 
     _Q_dn: do ->
       n = 0
       (cb, o) ->
-        @_tran[++n] = cb
+        ++n
+        if cb
+          @_tran[n] = cb
         if o?
           o._kisume_Q_dn = n
           @W.postMessage o, @W.location.origin
@@ -153,19 +186,21 @@ Kisume = do ->
         when 'init'
           @_init_cb this
         when 'pub'
-          null
+          null #TODO
 
     _A_up: (n, o) ->
       cb = @_tran[n]
       switch o.type
         when 'set', 'get', 'run'
-          cb? o.err, o.ret
+          if o.async
+            cb? o.err, o.rets...
+          else
+            cb? o.err, o.ret
       delete @_tran[n]
 
     _listener: (e) =>
       if e.origin != window.location.origin ||
          !(o = e.data)? then return
-      if @debug then console.log o
       switch
         when (n = o._kisume_Q_up)? then @_Q_up n, o
         when (n = o._kisume_A_up)? then @_A_up n, o
