@@ -41,6 +41,11 @@ module.exports = (grunt) ->
     @template = {}
     @concat = {}
 
+    console.log """
+      iced: #{grunt.option 'iced'}
+      trace: #{grunt.option 'trace'}
+    """
+
     # generate (iced-)coffee-script runtime
     runtime_use_iced = !!grunt.option('iced')
     @coffee.runtime =
@@ -50,15 +55,9 @@ module.exports = (grunt) ->
       files: [
         {src: 'src/runtime.iced', dest: 'build/runtime.generated.js'}
       ]
-    grunt.registerTask 'runtime-strip', ->
+    grunt.registerTask 'runtime-trunc', ->
       s = grunt.file.read 'build/runtime.generated.js', encoding: 'utf-8'
-      s = s.replace ///
-        ^\s*
-        \(function\(\)\s*\{
-          [\s\S]+
-        \}\);
-        \s*
-      ///m, ''
+      s = s.replace /^\s*\${3,}[\s\S]*/m, ''
       grunt.file.write 'build/runtime.iced', """
         COFFEE_RUNTIME = '''
         #{s}
@@ -66,7 +65,7 @@ module.exports = (grunt) ->
       """, encoding: 'utf-8'
     grunt.registerTask 'runtime', [
       'coffee:runtime'
-      'runtime-strip'
+      'runtime-trunc'
     ]
 
     # main code
