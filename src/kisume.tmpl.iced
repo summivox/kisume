@@ -87,7 +87,7 @@ class Kisume
     cb = @_tran[n]
     switch o.type
       when 'init'
-        @_init_cb null, this
+        @_init_cb?.call this
       when 'set', 'get', 'run'
         if o.async
           cb? o.err, o.rets...
