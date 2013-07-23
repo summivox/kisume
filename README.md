@@ -2,13 +2,13 @@
 
 ![Kisume](http://images1.wikia.nocookie.net/__cb20091026154610/touhou/images/b/b0/Kisume.png)
 
-**Kisume** (pronounced: kee-ss-may) is a javascript library for cross-browser
-userscripting that works around the limitation of sandboxes using only
-standard DOM manipulation, while being extremely simple to use.
+**Kisume** (pronounced: kee-ss-may) is a library written in coffee-script for
+cross-browser userscripting that works around the limitation of sandboxes using
+only standard DOM manipulation, while being extremely simple to use.
 
 The name (and mascot) comes from the [Touhou Project](http://touhou.wikia.com/wiki/Kisume).
 
-**NOTICE: Using mangler (e.g. `uglifyjs -m`) on coffee-script output (and
+**NOTE: Using mangler (e.g. `uglifyjs -m`) on coffee-script output (and
 probably other compile-to-javascript languages) could cause Kisume to stop
 working, due to language runtime library being mangled.**
 
@@ -39,9 +39,9 @@ constructed [IIFE][]s that does not inadvertently leak into real `window`, then
 communicate using `window.postMessage`. Both are standard DOM manipulation.
 
 The main drawback of this approach was overwhelming amount of boilerplate code
-to make it work smoothly. However, **Kisume** has taken care of that for you --
-all you need is to tell it what to run in the real `window`, right from the
-sandbox, and it will _Just Work_.
+to make it work smoothly. However, **Kisume** has already taken care of this
+tedious process for you -- all you need is to tell it what to run in the real
+`window`, right from the sandbox, and it should _Just Work_.
 
 [unsafe]: https://code.google.com/p/chromium/issues/detail?id=222652
 [IIFE]: http://en.wikipedia.org/wiki/Immediately-invoked_function_expression
@@ -50,17 +50,20 @@ sandbox, and it will _Just Work_.
 ## Features
 
 * True zero runtime dependency (only DOM manipulation needed)
-* Simple usage
-* No inadvertent pollution of global namespace (only `window.KISUME`)
-
-The following environments are tested:
-
-* Chrome Stable + Chrome plugin content script
-* Chrome Stable + TamperMonkey Stable
-* Firefox + GreaseMonkey
+* Trivially easy return value / error handling
+* Minimal pollution of global `window` object:
+    * coffee-script runtime library (e.g. `__slice` and friends)
+    * `window.KISUME` encapsulates all
+    * No pollution unless you run script that explicitly does so
+* Cross-browser compatibility, with the following environments tested:
+    * Chrome Stable + Chrome plugin content script
+    * Chrome Stable + TamperMonkey Stable
+    * Firefox + GreaseMonkey
 
 
 ## Build
+
+Prerequisite: node.js
 
 ```sh
 npm install --global grunt-cli
@@ -80,10 +83,10 @@ Use `dist/kisume.js` or `dist/kisume.min.js`.
 
 ## Usage
 
-**Foreword:** All public methods of Kisume are asynchronous by nature, taking a
-callback as the final argument, which is always called with the first argument
-as `err`, following node.js convention. This allows easy integration with async
-libraries as well as compile-to-javascript languages.
+**NOTE:** All public methods of Kisume are asynchronous by nature, taking a
+callback `(err, ...) -> ...` as the final argument, following node.js
+convention.  This allows easy integration with async libraries, as well as
+compile-to-javascript languages.
 
 ### Initialization
 
@@ -97,13 +100,17 @@ You may initialize a Kisume instance from the sandbox on any Window instance
 await kisume = Kisume window, defer()
 ```
 
+The callback is fired when Kisume finishes initialization (on failure, nothing
+happens). This means `window.KISUME` (notice the caps) is initialized in the
+real `window`, and is ready to run scripts for you.
+
 **NOTE:** Although `window` now refers to the sandbox, Kisume will correctly
 initialize itself in the real `window`.
 
-### IIFE
+### Keep It Simple, Stupid
 
-After initialization, we can directly use `kisume.run` to run a function in
-target window. Assuming that `window.a == 3` in the target:
+After initialization, we can directly use `kisume.run` to execute a function in
+the target window (in an [IIFE][] fashion). Assuming `window.a == 3`, then:
 
 ```coffee
 kisume.run ((b) -> window.a + b), 4, (err, ret) ->
@@ -111,24 +118,40 @@ kisume.run ((b) -> window.a + b), 4, (err, ret) ->
   else console.log ret
 ```
 
-will print `7` onto the console.
+prints `7` onto the console.
 
-A few points:
+**NOTE:**
 
 * The first argument (function) is run in the real `window`, while the callback
-  is run in the sandbox;
-* Arbitrary number of [**simple arguments**][post] may be passed;
+  is run in the sandbox
+* Arbitrary number of [**simple arguments**][post] may be passed
 * Error, either due to argument passing, or during the execution of the
-  function in the real `window`, are passed to the callback;
-* Return value of the function, if any, is passed to the callback as well.
-
+  function in the real `window`, is passed to the callback
+* Return value of the function is passed to the callback as well
 
 [post]: https://developer.mozilla.org/en-US/docs/Web/API/window.postMessage
 
+### Getting Organized
+
+Kisume allows you to not only run IIFEs, but also transfer existing functions
+and variables down to the real `window` domain without actually polluting it.
+You may pass down [simple objects][post] and functions down to the real
+`window` domain and organize them into _namespaces_ within `window.KISUME`.
+
+A _namespace_ is a normal javascript object managed by `window.KISUME`.
+Functions stored within a namespace are treated as methods of the namespace
+object by default, so when called from the sandbox, `this` in function body
+refers to its namespace object.
+
+Additionally, you may easily refer to objects and functions stored in other
+namespaces by declaring "included namespaces" or by using the special `ENV`
+function to lookup any namespace by name.
+
+Here is a concrete example:
 
 ```coffee
-await window.kisume = Kisume window, defer()
 console.log '=== begin kisume test ==='
+await kisume = Kisume window, defer()
 
 await kisume.set 'namespace1', [], {
   var1: {x: 1, y: 2}
@@ -155,9 +178,71 @@ console.assert ret2.x == 101 && ret2.y == 102
 await kisume.run (-> @namespace2.var1.x = -100), defer(err)
 console.assert !err?
 
+await kisume.run (-> window.o), defer(err, ret)
+console.assert !err?
+console.assert ret.x == 101 && ret.y == 102
+
 await kisume.get 'namespace2', ['var1'], defer(err, {var1})
 console.assert !err?
 console.assert var1.x == -100 && var1.y == 22
 
 console.log '=== end kisume test ==='
 ```
+
+#### `.set('ns', ['ns1', 'ns2'...], {name: func/obj}, cb)`
+
+Attempts to dump functions and objects within `o` into namespace `ns`, with the
+listed namespaces `ns1`, `ns2`... visible to said functions ("imported" into
+scope)
+
+**NOTE:**
+
+* Name of a namespace must be a valid javascript identifier
+* Objects and functions within the same namespace can be accessed using `this`
+  (e.g. `@func1` as in `func2`)
+* Included namespaces can be used directly in the function as if they're global
+  objects (e.g. `namespace1.var1` as in `func2`)
+* `ENV('namespace2')` provides a way to lookup other namespaces even if they're
+  not explicitly included (e.g. `func3`), similar to `require()` in node.js
+* To dump a whole simple object with methods: `.set('obj', [], obj, cb)`
+
+#### `.{run | runAsync}({func | 'ns', 'name'}, args..., cb)`
+
+Call a function in real `window`. Comes in 4 overloaded flavors:
+
+* A/synchronous:
+    * `run`:
+        * Equivalent to `ret = f(args...)`
+        * `cb(undefined, ret)` on function return
+    * `runAsync`:
+        * Equivalent to `f(args..., (err, rets) -> ...)`
+        * `cb(err, rets...)` on async complete
+* Function being called:
+    * `func`: [IIFE][]. The function will be transferred to real `window`, then
+      called as a method of the _parent object_ of all namespaces (e.g. first
+      IIFE in above example).
+    * `ns, name`: calls function stored in a namespace as its method.
+
+**NOTE:**
+
+* Error in argument passing / function throw will immediately invoke `cb(err)`
+* `ENV('namespace')` is always available to the function
+* `runAsync`: function should callback at most once
+
+#### `.get(ns, [name1, name2, ...], cb)`
+
+Attempts to read objects stored within the namespace.
+
+* `cb(err)` on error
+* `cb(undefined, {name1: obj1, name2: obj2, ...})` invoked on success
+
+### Access `ENV('namespace')` from real `window`
+
+`ENV` is an alias for `window.KISUME.ENV` in the real `window` visible to
+functions managed by Kisume. All namespaces can be accessed by code in real
+`window` through this interface.
+
+
+## License
+
+See `LICENSE`.
