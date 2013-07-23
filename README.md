@@ -2,7 +2,7 @@
 
 ![Kisume](http://images1.wikia.nocookie.net/__cb20091026154610/touhou/images/b/b0/Kisume.png)
 
-Kisume (pronounced: kee-ss-may) is a javascript library for cross-browser
+**Kisume** (pronounced: kee-ss-may) is a javascript library for cross-browser
 userscripting that works around the limitation of sandboxes using only
 standard DOM manipulation, while being extremely simple to use.
 
@@ -34,13 +34,14 @@ environments. However [this is mostly broken now][unsafe], and the future
 status of its support is unknown at the moment (TamperMonkey partially works
 around this issue, but is still hacky).
 
-Kisume uses an alternative approach: injecting `<script>` with carefully
+**Kisume** uses an alternative approach: injecting `<script>` with carefully
 constructed [IIFE][]s that does not inadvertently leak into real `window`, then
 communicate using `window.postMessage`. Both are standard DOM manipulation.
+
 The main drawback of this approach was overwhelming amount of boilerplate code
-to make it work smoothly; however, Kisume has taken care of that for you -- all
-you need is to tell it what to run in the real `window`, right from the
-sandbox, and it will Just Work (TM).
+to make it work smoothly. However, **Kisume** has taken care of that for you --
+all you need is to tell it what to run in the real `window`, right from the
+sandbox, and it will _Just Work_.
 
 [unsafe]: https://code.google.com/p/chromium/issues/detail?id=222652
 [IIFE]: http://en.wikipedia.org/wiki/Immediately-invoked_function_expression
@@ -72,17 +73,58 @@ Use `dist/kisume.js` or `dist/kisume.min.js`.
 ### Options
 
 ```
---iced  :   Also include iced-coffee-script runtime
---trace :   Enable postMessage tracing
+--iced=true  :   Also include iced-coffee-script runtime.
+--trace=true :   Enable postMessage tracing.
 ```
 
 
 ## Usage
 
-The library defines a single class `Kisume`, exported as `window.Kisume`.
+**Foreword:** All public methods of Kisume are asynchronous by nature, taking a
+callback as the final argument, which is always called with the first argument
+as `err`, following node.js convention. This allows easy integration with async
+libraries as well as compile-to-javascript languages.
 
-(NOTE: under construction. See [renren-markdown][rrmd] for use-case.)
-[rrmd]: https://github.com/smilekzs/renren-markdown
+### Initialization
+
+Include `kisume.js` into your userscript (preferrably using some build system).
+Class `Kisume` is defined and exported _into the sandbox_ as `window.Kisume`.
+
+You may initialize a Kisume instance from the sandbox on any Window instance
+(`window` or `myIframeElement.contentWindow`):
+
+```coffee
+await kisume = Kisume window, defer()
+```
+
+**NOTE:** Although `window` now refers to the sandbox, Kisume will correctly
+initialize itself in the real `window`.
+
+### IIFE
+
+After initialization, we can directly use `kisume.run` to run a function in
+target window. Assuming that `window.a == 3` in the target:
+
+```coffee
+kisume.run ((b) -> window.a + b), 4, (err, ret) ->
+  if err then console.error err
+  else console.log ret
+```
+
+will print `7` onto the console.
+
+A few points:
+
+* The first argument (function) is run in the real `window`, while the callback
+  is run in the sandbox;
+* Arbitrary number of [**simple arguments**][post] may be passed;
+* Error, either due to argument passing, or during the execution of the
+  function in the real `window`, are passed to the callback;
+* Return value of the function, if any, is passed to the callback as well.
+
+
+[post]: https://developer.mozilla.org/en-US/docs/Web/API/window.postMessage
+
 
 ```coffee
 await window.kisume = Kisume window, defer()
