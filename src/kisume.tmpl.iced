@@ -8,61 +8,54 @@ $ = (doc, script) ->
   el = doc.createElement 'script'
   el.textContent = script
   doc.head.appendChild el
+closure = (script) -> "(function(ENV){#{script}})(KISUME.env);"
+
+quote = (s) -> JSON.stringify s
+unique = (a) -> ((last = x) for x in a when x != last)
+strings = (a) -> (s for x in a when s = x?.toString())
 
 class Kisume
   VERSION: """<%= pkg.version %>"""
   constructor: (W, cb) ->
-    unless this instanceof Kisume then return new Kisume(W, cb)
+    unless this instanceof Kisume then return new Kisume W, cb
     @W = W
     @D = W.document
     @_tran = {}
     @_init_cb = cb
     @W.addEventListener 'message', @_listener
-    if !(@D.body.dataset['kisume'])?
+    unless @D.body.dataset['kisume']
       $ @D, "#{COFFEE_RUNTIME};(#{KISUME_BOTTOM})();"
       @D.body.dataset['kisume'] = true
 
-  set: (ns, requires, o, cb) ->
-    # variables: postMessage'd
-    # functions: metaprogrammed:
-    #   do (e = KISUME.env) ->
-    #     require_i = e.require_i
-    #     o = e('ns')
-    #     o['name'] = (...) -> ...
-
+  set: (ns, includes, o, cb) ->
     f = ''
     v = []
     for own name, x of o
       switch
         when x instanceof Function
-          f += "o[#{JSON.stringify name}] = (#{x});\n"
+          f += "#{ns}[#{quote name}] = (#{x});\n"
         when x instanceof Node
-          #TODO
+          # TODO
         else
           v.push {name, value: x}
     if f
+      includes = unique (includes || []).concat(ns).sort()
       q = ''
-      q += "var #{r} = e(#{JSON.stringify r});\n" for r in requires
-      $ @D, script = """
-        (function(e){
-        o = e(#{JSON.stringify ns});
-        #{q};
-        #{f};
-        })(KISUME.env);
-      """
+      q += "var #{i} = ENV(#{quote i});\n" for i in includes
+      $ @D, closure "#{q};#{f};"
     @_Q_dn cb, {type: 'set', ns, v}
 
   get: (ns, names, cb) ->
-    # TODO: sanitize
+    names = strings names
     @_Q_dn cb, {type: 'get', ns, names}
 
   # macro: run sync / async
   # NOTE: `_run` returns "->" function for proper binding
   _run = (async) ->
-    # `this` <= KISUME.env
+    # `this` <= KISUME._env
     _iife = (f, args..., cb) ->
       n = @_Q_dn()
-      $ @D, "window.KISUME.iife[#{n}] = (#{f});"
+      $ @D, closure "KISUME.iife[#{n}] = (#{f});"
       @_Q_dn cb, {type: 'run', async, iife: n, args}
 
     # `this` <= namespace
@@ -118,7 +111,10 @@ KISUME_BOTTOM = ->
     constructor: ->
       @iife = {}
       @_tran = {}
-      @env = (name) => @env[name] ||= {}
+      @_env = {}
+      @env = (x) =>
+        if ns = x?.toString() then (@_env[ns] ||= {})
+        else @_env
 
     _err: (e) -> switch
       when e instanceof Error
@@ -159,7 +155,7 @@ KISUME_BOTTOM = ->
           when 'run'
             if o.iife?
               f = @iife[o.iife]
-              t = @env
+              t = @_env
             else
               f = @env(o.ns)[o.name]
               t = @env(o.ns)
