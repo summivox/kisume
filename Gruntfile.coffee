@@ -32,12 +32,8 @@ module.exports = (grunt) ->
     @clean =
       build: ['build/*']
       dist: ['dist/*']
-    @coffee =
-      options:
-        bare: true
-    @uglify =
-      options:
-        preserveComments: 'some'
+    @coffee = {}
+    @uglify = {}
     @template = {}
     @concat = {}
 
@@ -50,22 +46,32 @@ module.exports = (grunt) ->
     runtime_use_iced = !!grunt.option('iced')
     @coffee.runtime =
       options:
+        bare: true
         runtime: if runtime_use_iced then 'window' else 'none'
         runforce: runtime_use_iced
       files: [
-        {src: 'src/runtime.iced', dest: 'build/runtime.generated.js'}
+        {src: 'src/runtime.iced', dest: 'build/runtime.js'}
       ]
-    grunt.registerTask 'runtime-trunc', ->
-      s = grunt.file.read 'build/runtime.generated.js', encoding: 'utf-8'
-      s = s.replace /^\s*\${3,}[\s\S]*/m, ''
-      grunt.file.write 'build/runtime.iced', """
+    @uglify.runtime =
+      options:
+        mangle: false
+        compress: false
+        preserveComments: false
+      files: [
+        {src: 'build/runtime.js', dest: 'build/runtime.min.js'}
+      ]
+    grunt.registerTask 'pack-runtime', ->
+      s = grunt.file.read 'build/runtime.min.js', encoding: 'utf-8'
+      s = s.replace /\s*\${3,}[\s\S]*/, ''
+      grunt.file.write 'build/runtime.packed.iced', """
         COFFEE_RUNTIME = '''
         #{s}
         '''
       """, encoding: 'utf-8'
     grunt.registerTask 'runtime', [
       'coffee:runtime'
-      'runtime-trunc'
+      'uglify:runtime'
+      'pack-runtime'
     ]
 
     # main code
@@ -80,12 +86,13 @@ module.exports = (grunt) ->
         join: true
         runtime: 'window'
       files: [
-        {src: ['build/runtime.iced', 'build/kisume.iced'], dest: 'dist/kisume.js'}
+        {src: ['build/kisume.iced', 'build/runtime.packed.iced'], dest: 'dist/kisume.js'}
       ]
     @uglify.main =
       options:
         mangle: false
         compress: true
+        preserveComments: 'some'
       files: [
         {src: 'dist/kisume.js', dest: 'dist/kisume.min.js'}
       ]

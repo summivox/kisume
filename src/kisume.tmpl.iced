@@ -1,4 +1,8 @@
-###! https://github.com/smilekzs/kisume ###
+###!
+ * Kisume <%= pkg.version %>
+ * <%= pkg.description %>
+ * <%= pkg.homepage %>
+###
 
 $ = (doc, script) ->
   el = doc.createElement 'script'
@@ -106,7 +110,7 @@ class Kisume
       when (n = o._kisume_A_up)? then @_A_up n, o
 
 KISUME_BOTTOM = ->
-  ###! https://github.com/smilekzs/kisume ###
+  ###! Kisume <%= pkg.version %> ###
   if window.KISUME? then return
   window.KISUME = KISUME = new class
     VERSION: """<%= pkg.version %>"""
