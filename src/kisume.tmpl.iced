@@ -142,14 +142,10 @@ KISUME_BOTTOM = ->
             x = @env(o.ns)
             ret = {}
             for name in o.names
-              # TODO: handle data types
               ret[name] = do (v = x[name]) -> switch
-                when v instanceof Function
-                  'Function'
-                when v instanceof Node
-                  'Node'
-                when v instanceof Error
-                  @_err v
+                when v instanceof Function then v.toString()
+                when v instanceof Node then 'Node' # TODO
+                when v instanceof Error then @_err v
                 else v
             @_A_up n, {type: 'get', ret}
           when 'run'
