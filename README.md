@@ -2,9 +2,10 @@
 
 ![Kisume](http://images1.wikia.nocookie.net/__cb20091026154610/touhou/images/b/b0/Kisume.png)
 
-**Kisume** (pronounced: kee-ss-may) is a library written in coffee-script for
-cross-browser userscripting that works around the limitation of sandboxes using
-only standard DOM manipulation, while being extremely simple to use.
+**Kisume** (pronounced: kee-ss-may) is a library written in
+[coffee-script][coffee] for cross-browser userscripting that works around the
+limitation of sandboxes using only standard DOM manipulation, while featuring
+a clean and DRY interface.
 
 The name (and mascot) comes from the [Touhou Project](http://touhou.wikia.com/wiki/Kisume).
 
@@ -83,10 +84,17 @@ Use `dist/kisume.js` or `dist/kisume.min.js`.
 
 ## Usage
 
-**NOTE:** All public methods of Kisume are asynchronous by nature, taking a
+All public methods of Kisume are asynchronous by nature, taking a
 callback `(err, ...) -> ...` as the final argument, following node.js
 convention.  This allows easy integration with async libraries, as well as
 compile-to-javascript languages.
+
+**NOTE:** Examples are in [iced-coffee-script][iced] for the convenience of
+async handling, although the library itself is written in original
+[coffee-script][coffee], compiled down to javascript.
+
+[iced]: https://github.com/maxtaco/coffee-script
+[coffee]: https://github.com/jashkenas/coffee-script
 
 ### Initialization
 
@@ -133,10 +141,9 @@ prints `7` onto the console.
 
 ### Getting Organized
 
-Kisume allows you to not only run IIFEs, but also transfer existing functions
-and variables down to the real `window` domain without actually polluting it.
-You may pass down [simple objects][post] and functions down to the real
-`window` domain and organize them into _namespaces_ within `window.KISUME`.
+In addition to running IIFEs, Kisume allows you to pass [simple objects][post]
+and functions down to the real `window` domain and organize them into
+_namespaces_.
 
 A _namespace_ is a normal javascript object managed by `window.KISUME`.
 Functions stored within a namespace are treated as methods of the namespace
