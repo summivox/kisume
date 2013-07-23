@@ -8,7 +8,7 @@ $ = (doc, script) ->
   el = doc.createElement 'script'
   el.textContent = script
   doc.head.appendChild el
-closure = (script) -> "(function(ENV){#{script}})(KISUME.env);"
+closure = (script) -> "(function(ENV){#{script}})(KISUME.ENV);"
 
 quote = (s) -> JSON.stringify s
 unique = (a) -> ((last = x) for x in a when x != last)
@@ -52,7 +52,7 @@ class Kisume
   # macro: run sync / async
   # NOTE: `_run` returns "->" function for proper binding
   _run = (async) ->
-    # `this` <= KISUME._env
+    # `this` <= KISUME._ENV
     _iife = (f, args..., cb) ->
       n = @_Q_dn()
       $ @D, closure "KISUME.iife[#{n}] = (#{f});"
@@ -111,10 +111,12 @@ KISUME_BOTTOM = ->
     constructor: ->
       @iife = {}
       @_tran = {}
-      @_env = {}
-      @env = (x) =>
-        if ns = x?.toString() then (@_env[ns] ||= {})
-        else @_env
+      @_ENV = {}
+
+      # NOTE: NOT declared in prototype to prevent sharing between instances
+      @ENV = (x) =>
+        if ns = x?.toString() then (@_ENV[ns] ||= {})
+        else @_ENV
 
     _err: (e) -> switch
       when e instanceof Error
@@ -134,12 +136,12 @@ KISUME_BOTTOM = ->
       try
         switch o.type
           when 'set'
-            x = @env(o.ns)
+            x = @ENV(o.ns)
             for {name, value} in o.v
               x[name] = value
             @_A_up n, {type: 'set'}
           when 'get'
-            x = @env(o.ns)
+            x = @ENV(o.ns)
             ret = {}
             for name in o.names
               ret[name] = do (v = x[name]) -> switch
@@ -151,10 +153,10 @@ KISUME_BOTTOM = ->
           when 'run'
             if o.iife?
               f = @iife[o.iife]
-              t = @_env
+              t = @_ENV
             else
-              f = @env(o.ns)[o.name]
-              t = @env(o.ns)
+              f = @ENV(o.ns)[o.name]
+              t = @ENV(o.ns)
             if !f
               @_A_up n, {type: 'run', err: true}
             else if o.async
