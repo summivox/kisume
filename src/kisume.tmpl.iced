@@ -4,17 +4,12 @@
  * <%= pkg.homepage %>
 ###
 
-$ = (doc, script) ->
-  el = doc.createElement 'script'
-  el.textContent = script
-  doc.head.appendChild el
+# utilities
 closure = (script) -> "(function(ENV){#{script}})(KISUME.ENV);"
-
 quote = (s) -> JSON.stringify s
 unique = (a) -> ((last = x) for x in a when x != last)
 strings = (a) -> (s for x in a when s = x?.toString())
 san_func = (f) -> if f instanceof Function then f else ->
-
 bailout = (cb, err) -> cb? err ; throw err
 
 class Kisume
@@ -25,16 +20,17 @@ class Kisume
       unless W?.top instanceof Window
         bailout cb, Error 'Kisume: must be initialized on Window instance'
 
-      @W = W
-      @D = W.document
+      @options = opt || {}
+
+      @_W = W
+      @_D = W.document
       @_tran = {}
       @_init_cb = san_func cb
-      @options = opt || {}
-      @W.addEventListener 'message', @_listener
 
-      if @D.head.dataset['kisume']
+      if @_D.head.dataset['kisume']
         bailout cb, Error 'Kisume: already initialized on this window'
       else
+        @_W.addEventListener 'message', @_listener
         script = "(#{KISUME_BOTTOM})();" # IIFE for bottom
         if @options.coffee
           # runtime published in window
@@ -42,13 +38,18 @@ class Kisume
         else
           # runtime for bottom only
           script = "(function(){#{COFFEE_RUNTIME};#{script};})();"
-        $ @D, script
-        @D.head.dataset['kisume'] = @VERSION
+        @inject script
+        @_D.head.dataset['kisume'] = @VERSION
 
     (W, x...) ->
       switch x.length
         when 0, 1 then return _.call this, W, {}, x...
         when 2 then return _.apply this, arguments
+
+  inject: (script) ->
+    el = @_D.createElement 'script'
+    el.textContent = script
+    @_D.head.appendChild el
 
   set: (ns, includes, o, cb) ->
     f = ''
@@ -65,7 +66,7 @@ class Kisume
       includes = unique (includes || []).concat(ns).sort()
       q = ''
       q += "var #{i} = ENV(#{quote i});\n" for i in includes
-      $ @D, closure "#{q};#{f};"
+      @inject closure "#{q};#{f};"
     @_Q_dn cb, {type: 'set', ns, v}
 
   get: (ns, names, cb) ->
@@ -78,7 +79,7 @@ class Kisume
     # `this` <= KISUME._ENV
     _iife = (f, args..., cb) ->
       n = @_Q_dn()
-      $ @D, closure "KISUME.iife[#{n}] = (#{f});"
+      @inject closure "KISUME.iife[#{n}] = (#{f});"
       @_Q_dn cb, {type: 'run', async, iife: n, args}
 
     # `this` <= namespace
@@ -103,7 +104,7 @@ class Kisume
         @_tran[n] = san_func cb
       if o?
         o._kisume_Q_dn = n
-        @W.postMessage o, @W.location.origin
+        @_W.postMessage o, @_W.location.origin
       return n
 
   _A_up: (n, o) ->
