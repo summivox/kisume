@@ -13,19 +13,42 @@ closure = (script) -> "(function(ENV){#{script}})(KISUME.ENV);"
 quote = (s) -> JSON.stringify s
 unique = (a) -> ((last = x) for x in a when x != last)
 strings = (a) -> (s for x in a when s = x?.toString())
+san_func = (f) -> if f instanceof Function then f else ->
+
+bailout = (cb, err) -> cb? err ; throw err
 
 class Kisume
   VERSION: """<%= pkg.version %>"""
-  constructor: (W, cb) ->
-    unless this instanceof Kisume then return new Kisume W, cb
-    @W = W
-    @D = W.document
-    @_tran = {}
-    @_init_cb = cb
-    @W.addEventListener 'message', @_listener
-    unless @D.body.dataset['kisume']
-      $ @D, "#{COFFEE_RUNTIME};(#{KISUME_BOTTOM})();"
-      @D.body.dataset['kisume'] = true
+  constructor: do ->
+    _ = (W, opt, cb) ->
+      unless this instanceof Kisume then return new Kisume W, opt, cb
+      unless W?.top instanceof Window
+        bailout cb, Error 'Kisume: must be initialized on Window instance'
+
+      @W = W
+      @D = W.document
+      @_tran = {}
+      @_init_cb = san_func cb
+      @options = opt || {}
+      @W.addEventListener 'message', @_listener
+
+      if @D.head.dataset['kisume']
+        bailout cb, Error 'Kisume: already initialized on this window'
+      else
+        script = "(#{KISUME_BOTTOM})();" # IIFE for bottom
+        if @options.coffee
+          # runtime published in window
+          script = "#{COFFEE_RUNTIME};(function(){#{script};})();"
+        else
+          # runtime for bottom only
+          script = "(function(){#{COFFEE_RUNTIME};#{script};})();"
+        $ @D, script
+        @D.head.dataset['kisume'] = @VERSION
+
+    (W, x...) ->
+      switch x.length
+        when 0, 1 then return _.call this, W, {}, x...
+        when 2 then return _.apply this, arguments
 
   set: (ns, includes, o, cb) ->
     f = ''
@@ -77,7 +100,7 @@ class Kisume
     (cb, o) ->
       ++n
       if cb
-        @_tran[n] = cb
+        @_tran[n] = san_func cb
       if o?
         o._kisume_Q_dn = n
         @W.postMessage o, @W.location.origin
@@ -87,12 +110,12 @@ class Kisume
     cb = @_tran[n]
     switch o.type
       when 'init'
-        @_init_cb?.call this
+        @_init_cb.call this
       when 'set', 'get', 'run'
         if o.async
-          cb? o.err, o.rets...
+          cb o.err, o.rets...
         else
-          cb? o.err, o.ret
+          cb o.err, o.ret
     delete @_tran[n]
 
   _listener: (e) =>
@@ -157,13 +180,13 @@ KISUME_BOTTOM = ->
             else
               f = @ENV(o.ns)[o.name]
               t = @ENV(o.ns)
-            if !f
-              @_A_up n, {type: 'run', err: true}
+            if !(f instanceof Function)
+              @_A_up n, {type: 'run', err: 'KISUME: function not found'}
             else if o.async
-              f?.call t, o.args..., (err, rets...) =>
+              f.call t, o.args..., (err, rets...) =>
                 @_A_up n, {type: 'run', async: true, err, rets}
             else
-              ret = f?.apply t, o.args
+              ret = f.apply t, o.args
               @_A_up n, {type: 'run', async: false, ret}
       catch e
         @_A_up n, {type: o.type, async: false, err: @_err(e)}
