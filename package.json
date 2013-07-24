@@ -1,5 +1,5 @@
 {"name": "kisume"
-,"description": "Cross-sandbox-window utility library for userscript environments"
+,"description": "Cross-browser library providing reliable `window` access for userscripting"
 ,"version": "0.4.1"
 ,"homepage": "https://github.com/smilekzs/kisume"
 ,"author":
