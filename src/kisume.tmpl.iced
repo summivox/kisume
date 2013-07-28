@@ -16,8 +16,8 @@ class Kisume
   VERSION: """<%= pkg.version %>"""
   constructor: do ->
     _ = (W, opt, cb) ->
-      unless this instanceof Kisume then return new Kisume W, opt, cb
-      unless W?.top instanceof Window
+      if this not instanceof Kisume then return new Kisume W, opt, cb
+      if W?.top not instanceof Window
         bailout cb, Error 'Kisume: must be initialized on Window instance'
 
       @options = opt || {}
@@ -181,7 +181,7 @@ KISUME_BOTTOM = ->
             else
               f = @ENV(o.ns)[o.name]
               t = @ENV(o.ns)
-            if !(f instanceof Function)
+            if f not instanceof Function
               @_A_up n, {type: 'run', err: 'KISUME: function not found'}
             else if o.async
               f.call t, o.args..., (err, rets...) =>
