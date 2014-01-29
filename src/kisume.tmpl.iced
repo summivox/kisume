@@ -5,7 +5,6 @@
 ###
 
 # utilities
-closure = (script) -> "(function(ENV){#{script}})(KISUME.ENV);"
 quote = (s) -> JSON.stringify s
 unique = (a) -> ((last = x) for x in a when x != last)
 strings = (a) -> (s for x in a when s = x?.toString())
@@ -15,23 +14,28 @@ bailout = (cb, err) -> cb? err ; throw err
 class Kisume
   VERSION: """<%= pkg.version %>"""
   constructor: do ->
-    _ = (W, opt, cb) ->
-      if this not instanceof Kisume then return new Kisume W, opt, cb
+    _ = (W, instanceName, opt, cb) ->
+      if this not instanceof Kisume then return new Kisume W, instanceName, opt, cb
       if W?.top not instanceof Window
         bailout cb, Error 'Kisume: must be initialized on Window instance'
 
+      instanceName = instanceName.replace(/[^\w]/g, '_')
+      instanceNameTag = 'kisume_' + instanceName
+
+      @instanceName = instanceName
       @options = opt || {}
 
       @_W = W
       @_D = W.document
       @_tran = {}
       @_init_cb = san_func cb
+      @closure = do (instanceName) -> (script) -> "(function(ENV){#{script}})(#{instanceName}.ENV);"
 
-      if @_D.head.dataset['kisume']
-        bailout cb, Error 'Kisume: already initialized on this window'
+      if @_D.head.dataset[instanceNameTag]
+        bailout cb, Error 'Kisume: instance with same name already initialized on this window'
       else
         @_W.addEventListener 'message', @_listener
-        script = "(#{KISUME_BOTTOM})();" # IIFE for bottom
+        script = "(#{KISUME_BOTTOM})('#{instanceName}');" # IIFE for bottom
         if @options.coffee
           # runtime published in window
           script = "#{COFFEE_RUNTIME};(function(){#{script};})();"
@@ -39,11 +43,11 @@ class Kisume
           # runtime for bottom only
           script = "(function(){#{COFFEE_RUNTIME};#{script};})();"
         @inject script
-        @_D.head.dataset['kisume'] = @VERSION
+        @_D.head.dataset[instanceNameTag] = @VERSION
 
-    (W, x...) ->
+    (W, instanceName, x...) ->
       switch x.length
-        when 0, 1 then return _.call this, W, {}, x...
+        when 0, 1 then return _.call this, W, instanceName, {}, x...
         when 2 then return _.apply this, arguments
 
   inject: (script) ->
@@ -66,7 +70,7 @@ class Kisume
       includes = unique (includes || []).concat(ns).sort()
       q = ''
       q += "var #{i} = ENV(#{quote i});\n" for i in includes
-      @inject closure "#{q};#{f};"
+      @inject @closure "#{q};#{f};"
     @_Q_dn cb, {type: 'set', ns, v}
 
   get: (ns, names, cb) ->
@@ -76,10 +80,10 @@ class Kisume
   # macro: run sync / async
   # NOTE: `_run` returns "->" function for proper binding
   _run = (async) ->
-    # `this` <= KISUME._ENV
+    # `this` <= kisumeInstance._ENV
     _iife = (f, args..., cb) ->
       n = @_Q_dn()
-      @inject closure "KISUME.iife[#{n}] = (#{f});"
+      @inject @closure "#{@instanceName}.iife[#{n}] = (#{f});"
       @_Q_dn cb, {type: 'run', async, iife: n, args}
 
     # `this` <= namespace
@@ -103,7 +107,8 @@ class Kisume
       if cb
         @_tran[n] = san_func cb
       if o?
-        o._kisume_Q_dn = n
+        o._kisume_v1_instanceName = @instanceName
+        o._kisume_v1_Q_dn = n
         @_W.postMessage o, @_W.location.origin
       return n
 
@@ -121,18 +126,21 @@ class Kisume
 
   _listener: (e) =>
     if e.origin != window.location.origin ||
-       !(o = e.data)? then return
+       !(o = e.data)? ||
+       o._kisume_v1_instanceName != @instanceName then return
     switch
-      # when (n = o._kisume_Q_up)? then @_Q_up n, o
-      when (n = o._kisume_A_up)? then @_A_up n, o
+      # when (n = o._kisume_v1_Q_up)? then @_Q_up n, o
+      when (n = o._kisume_v1_A_up)? then @_A_up n, o
 
-KISUME_BOTTOM = ->
+KISUME_BOTTOM = (instanceName) ->
   ###! Kisume <%= pkg.version %> ###
-  if window.KISUME? then return
-  window.KISUME = KISUME = new class
+  if window[instanceName] then return
+  window[instanceName] = kisumeInstance = new class
     VERSION: """<%= pkg.version %>"""
     TRACE: """<%= TRACE %>"""
     constructor: ->
+      @instanceName = instanceName
+
       @iife = {}
       @_tran = {}
       @_ENV = {}
@@ -152,7 +160,8 @@ KISUME_BOTTOM = ->
       else true
 
     _A_up: (n, o) ->
-      o._kisume_A_up = n
+      o._kisume_v1_instanceName = @instanceName
+      o._kisume_v1_A_up = n
       window.postMessage o, window.location.origin
       return
 
@@ -195,16 +204,20 @@ KISUME_BOTTOM = ->
 
   window.addEventListener 'message', (e) ->
     if e.origin != window.location.origin ||
-       !(o = e.data)? then return
-    if KISUME.TRACE == 'true'
+       !(o = e.data)? ||
+       o._kisume_v1_instanceName != instanceName then return
+    if kisumeInstance.TRACE == 'true'
       if o.err? then console.warn o
       else console.info o
     switch
-      when (n = o._kisume_Q_dn)? then KISUME._Q_dn n, o
-      # when (n = o._kisume_A_dn)? then KISUME._A_dn n, o
+      when (n = o._kisume_v1_Q_dn)? then kisumeInstance._Q_dn n, o
+      # when (n = o._kisume_v1_A_dn)? then kisumeInstance._A_dn n, o
 
   # notify top: bottom init finished
-  KISUME._A_up 0, {type: 'init'}
+  kisumeInstance._A_up 0, {
+    _kisume_v1_instanceName: instanceName
+    type: 'init'
+  }
 
 do (exports = if exports? then exports else this) ->
   exports.Kisume = Kisume
