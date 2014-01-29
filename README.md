@@ -54,7 +54,7 @@ window.a = 20;
 And you put this in your userscript source (run after page script execution):
 
 ```coffee
-window.kisume = Kisume window, {coffee: true}, (err) ->
+window.kisume = Kisume window, 'kisume_test', {coffee: true}, (err) ->
   if err
     console.error err
     return
@@ -112,13 +112,22 @@ the sandbox, and it should _Just Work_.
 * True zero runtime dependency (only DOM manipulation needed)
 * Trivially easy return value / error handling
 * Minimal pollution of global `window` object:
-    * `window.KISUME`
+    * one kisume instance
     * coffee-script runtime library (`__slice` and friends) _on your request_
     * Does not add anything else to `window` unless your script does so
 * Cross-browser compatibility, with the following environments tested:
     * Chrome Stable + Chrome plugin content script
     * Chrome Stable + TamperMonkey Stable
     * Firefox + GreaseMonkey
+
+
+## Concept
+
+Kisume provides a bridge between the sandbox's and the page's global scope.
+When Kisume is initialized, two objects are created: a _sandbox-side instance_,
+and a _page-side instance_. By using methods provided by the sandbox-side
+instance, the userscript may transfer code to the page-side instance and
+subsequently use it, thus gaining access to page-side resources indirectly.
 
 
 ## Usage
@@ -133,16 +142,22 @@ compile-to-javascript languages.
 Include `kisume.js` into your userscript (preferrably using some build system).
 Class `Kisume` is defined and exported _into the sandbox_ as `window.Kisume`.
 
-#### `Kisume(W, options, cb)`
+#### `Kisume(W, instanceName, options, cb)`
 
-Initialize Kisume instance on DOM Window instance `W` (can be `window` or
-`iframeElem.contentWindow`). Each window may only be initialized once.
-`cb(err)` is invoked on complete / error.
+Creates a Kisume instance in `W`, where `W` may be `window` or some
+`iframeElem.contentWindow`. The sandbox-side instance is returned, while the
+page-side instance is registered in the page's global scope. `cb(err)` is
+invoked on initialization complete / error.
 
-`options`: dictionary:
+*   `instanceName`: string
+    
+    Name of the page-side instance. Name should be a valid javascript
+    identifier and match `/\w+/` (alpha-numeric + underscore).
 
-* `coffee`: When set to `true`, coffee-script runtime is exported to target
-  window. This is often necessary if you're using coffee-script.
+*   `options`: dictionary
+
+    *   `coffee`: When set to `true`, coffee-script runtime is exported to
+        target window. This is often necessary if you're using coffee-script.
 
 **NOTE:**
 
@@ -150,20 +165,19 @@ Initialize Kisume instance on DOM Window instance `W` (can be `window` or
   you'll need to inject its runtime library into the target window as well.
   You can use `.inject(script)` for quick script tag injection.
 * Regarding `Kisume(window, ...)`: Although `window` now refers to the sandbox,
-  Kisume will correctly initialize itself in the target window.
+  Kisume will correctly initialize itself in the page-side scope.
 
 ### Keep It Simple, Stupid
 
-After initialization, we can directly use `kisume.run` to execute a function in
-the target window (in an [IIFE][] fashion), as demonstrated in above example.
+After initialization, `kisume.run` can be used to execute a function in the
+page-side scope (in an [IIFE][] fashion), as demonstrated in above example.
 
 ### Getting Organized
 
 In addition to running IIFEs, Kisume allows you to pass [simple objects][obj]
-and functions down to the target window domain and organize them into
-_namespaces_.
+and functions down to the page-side instance and store them in _namespaces_.
 
-A _namespace_ is a normal javascript object managed by `window.KISUME`.
+A _namespace_ is a normal javascript object managed by a page-side instance.
 Functions stored within a namespace are treated as methods of the namespace
 object by default, so when called from the sandbox, `this` in function body
 refers to its namespace object.
@@ -176,7 +190,7 @@ Here is a concrete example:
 
 ```coffee
 console.log '=== begin kisume test ==='
-await kisume = Kisume window, defer()
+await kisume = Kisume window, 'kisume_test', defer()
 
 await kisume.set 'namespace1', [], {
   var1: {x: 1, y: 2}
@@ -243,9 +257,9 @@ Call a function in target window. Comes in 4 overloaded flavors:
         * Equivalent to `f(args..., (err, rets) -> ...)`
         * `cb(err, rets...)` on async complete
 * Function being called:
-    * `func`: [IIFE][]. The function will be transferred to target window, then
-      called as a method of the _parent object_ of all namespaces (e.g. first
-      IIFE in above example).
+    * `func`: [IIFE][]. The function will be transferred to page-side instance,
+      then called as a method of the _parent object_ of all namespaces (e.g.
+      first IIFE in above example).
     * `ns, name`: calls function stored in a namespace as its method.
 
 **NOTE:**
@@ -263,9 +277,23 @@ Attempts to read objects stored within the namespace.
 
 ### Access `ENV('namespace')` from target window
 
-`ENV` is an alias for `window.KISUME.ENV` in the target window visible to
-functions managed by Kisume. All namespaces can be accessed by code in target
-window through this interface.
+`ENV` is an alias for `pageSideInstance.ENV` visible to functions transferred
+to page-side. All namespaces can be accessed by code in page-side through this
+interface.
+
+
+## Revision History
+
+-   **2014-01-29 v1.0.0**:
+    
+    -   Now supports *multiple* Kisume instances on the same window object.
+        This means multiple userscripts that all employ Kisume can now co-exist
+        in the same page.
+
+    -   **Compability break**: Name of the page-side instance must be provided
+        as the 2nd argument to the Kisume constructor.
+
+        Migration should be easy (just change the constructor call).
 
 
 ## License
