@@ -1,16 +1,16 @@
 {"name": "kisume"
 ,"description": "Cross-browser library providing reliable `window` access for userscripting"
 ,"version": "1.0.0"
-,"homepage": "https://github.com/smilekzs/kisume"
+,"homepage": "https://github.com/summivox/kisume"
 ,"author":
   {"name": "smilekzs"
   }
 ,"repository":
   {"type": "git"
-  ,"url": "git://github.com/smilekzs/kisume.git"
+  ,"url": "git://github.com/summivox/kisume.git"
   }
 ,"bugs":
-  {"url": "https://github.com/smilekzs/kisume/issues"
+  {"url": "https://github.com/summivox/kisume/issues"
   }
 ,"licenses":
   [ {"type": "MIT"
